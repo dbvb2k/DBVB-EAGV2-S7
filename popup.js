@@ -58,6 +58,8 @@ downloadIndexButton.addEventListener('click', downloadIndex);
 
 // Initialize popup
 document.addEventListener('DOMContentLoaded', function() {
+    // Clear all data functionality - must be inside DOMContentLoaded
+    document.getElementById('clear-all-data').addEventListener('click', clearAllData);
     console.log('Popup DOM loaded');
     
     // Initialize notification area
@@ -752,5 +754,52 @@ async function getConfidentialSites() {
     } catch (error) {
         console.error('Error getting confidential sites:', error);
         return [];
+    }
+}
+
+// Function to clear all indexed data
+async function clearAllData() {
+    // Confirm with the user
+    const confirmed = confirm(
+        'WARNING: This will permanently delete all indexed data!\n\n' +
+        'This includes:\n' +
+        '- All web pages you have visited and indexed\n' +
+        '- Search history\n' +
+        '- Index metadata\n\n' +
+        'This action CANNOT be undone!\n\n' +
+        'Do you want to continue?'
+    );
+    
+    if (!confirmed) {
+        console.log('User cancelled data clearing');
+        return;
+    }
+    
+    console.log('Clearing all indexed data...');
+    
+    try {
+        // Call the backend API to clear the index
+        const response = await fetch('http://localhost:5000/api/clear-index', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            addNotification('All indexed data cleared successfully!', 'success');
+            
+            // Also update the stats display if we're on the export tab
+            if (document.getElementById('export-tab').classList.contains('active')) {
+                setTimeout(getIndexStats, 500);
+            }
+        } else {
+            throw new Error(result.error || 'Unknown error');
+        }
+    } catch (error) {
+        console.error('Error clearing indexed data:', error);
+        addNotification(`Error clearing data: ${error.message}`, 'error');
     }
 } 

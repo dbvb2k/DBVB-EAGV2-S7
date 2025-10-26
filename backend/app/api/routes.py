@@ -293,4 +293,23 @@ def check_indexed():
         })
     except Exception as e:
         logger.error(f'Error checking if page is indexed: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+@bp.route('/clear-index', methods=['POST'])
+def clear_index():
+    """Clear all indexed data and start fresh."""
+    init_services()
+    
+    try:
+        # Clear the FAISS index
+        faiss_index.clear()
+        
+        logger.info("Index cleared successfully")
+        
+        return jsonify({
+            'success': True,
+            'message': 'All indexed data cleared successfully'
+        })
+    except Exception as e:
+        logger.error(f'Error clearing index: {str(e)}')
         return jsonify({'error': str(e)}), 500 
