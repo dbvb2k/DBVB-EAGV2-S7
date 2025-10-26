@@ -18,6 +18,34 @@ console.log('Popup script loaded');
 
 // Constants
 const NOTIFICATION_DURATION = 3000; // 3 seconds in milliseconds
+const MAX_VISIBLE_NOTIFICATIONS = 3; // Maximum number of visible notifications
+const NOTIFICATION_RULES = {
+    // Messages to completely suppress
+    suppress: [
+        'Extension initialized successfully',
+        'Extension initialized'
+    ],
+    // Success messages - auto-hide quickly
+    quickSuccess: {
+        duration: 2000, // 2 seconds
+        keywords: ['successfully', 'saved', 'Settings saved', 'Successfully indexed']
+    },
+    // Info messages - auto-hide after medium time
+    info: {
+        duration: 3000, // 3 seconds
+        keywords: ['started', 'indexing', 'Loading']
+    },
+    // Errors/warnings - keep for longer
+    persistent: {
+        duration: 10000, // 10 seconds
+        keywords: ['error', 'failed', 'Error']
+    },
+    // Routine success - suppress after very short time
+    routine: {
+        duration: 1000, // 1 second
+        keywords: ['Skipped', 'skipped', 'already indexed']
+    }
+};
 
 // Tab switching functionality
 tabs.forEach(tab => {
@@ -77,7 +105,7 @@ document.addEventListener('DOMContentLoaded', function() {
     chrome.runtime.sendMessage({ action: 'init' }, response => {
         if (response && response.success) {
             console.log('Extension initialized successfully');
-            addNotification('Extension initialized successfully', 'success');
+            // Don't show notification as it's a routine message
         } else {
             console.error('Failed to initialize extension:', response?.error || 'Unknown error');
             addNotification('Failed to initialize extension', 'error');
@@ -114,18 +142,20 @@ document.addEventListener('DOMContentLoaded', function() {
         // Update the status display
         updateStatus(message.status, message.url, message.error);
         
-        // Add notification
+        // Add notification only for important statuses
         let notificationType = 'info';
         let notificationMessage = '';
+        let shouldNotify = false;
         
         switch (message.status) {
             case 'skipped':
                 if (message.error && message.error === 'Page already indexed') {
-                    notificationMessage = `Page skipped: already indexed (${message.url})`;
-                    notificationType = 'info';
+                    // Don't notify about already indexed pages - too routine
+                    shouldNotify = false;
                 } else {
                     notificationMessage = `Skipped confidential page: ${message.url}`;
-                    notificationType = 'error';
+                    notificationType = 'info';
+                    shouldNotify = true;
                 }
                 // Ensure the error message is displayed
                 if (message.error) {
@@ -140,25 +170,30 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 break;
             case 'started':
-                notificationMessage = `Started indexing: ${message.url}`;
-                notificationType = 'info';
+                // Don't notify about started - just show in status indicator
+                shouldNotify = false;
                 break;
             case 'completed':
                 notificationMessage = `Successfully indexed: ${message.url}`;
                 notificationType = 'success';
+                shouldNotify = true;
                 break;
             case 'error':
                 notificationMessage = `Error indexing ${message.url}: ${message.error || 'Unknown error'}`;
                 notificationType = 'error';
+                shouldNotify = true;
                 break;
             default:
                 notificationMessage = `Unknown status for ${message.url}: ${message.status}`;
                 notificationType = 'info';
+                shouldNotify = true;
         }
         
-        // Add notification
-        console.log('Adding notification:', notificationMessage, 'Type:', notificationType);
-        addNotification(notificationMessage, notificationType);
+        // Add notification only if needed
+        if (shouldNotify) {
+            console.log('Adding notification:', notificationMessage, 'Type:', notificationType);
+            addNotification(notificationMessage, notificationType);
+        }
     }
 
     // Add test button to settings tab
@@ -187,14 +222,40 @@ document.addEventListener('DOMContentLoaded', function() {
     settingsTab.insertBefore(testButton, settingsTab.firstChild);
 });
 
-// Function to add a notification
+// Function to add a notification with smart duration
 function addNotification(message, type = 'info') {
     console.log('Adding notification:', message, 'Type:', type);
+    
+    // Check if message should be suppressed
+    if (NOTIFICATION_RULES.suppress.some(pattern => message.includes(pattern))) {
+        console.log('Suppressed notification:', message);
+        return;
+    }
     
     const notificationArea = document.getElementById('notification-area');
     if (!notificationArea) {
         console.error('Notification area not found');
         return;
+    }
+
+    // Determine auto-hide duration based on message content
+    let autoHideDuration = NOTIFICATION_DURATION;
+    
+    // Check for persistent messages (errors)
+    if (NOTIFICATION_RULES.persistent.keywords.some(keyword => message.toLowerCase().includes(keyword.toLowerCase()))) {
+        autoHideDuration = NOTIFICATION_RULES.persistent.duration;
+    }
+    // Check for routine messages
+    else if (NOTIFICATION_RULES.routine.keywords.some(keyword => message.includes(keyword))) {
+        autoHideDuration = NOTIFICATION_RULES.routine.duration;
+    }
+    // Check for success messages
+    else if (NOTIFICATION_RULES.quickSuccess.keywords.some(keyword => message.toLowerCase().includes(keyword.toLowerCase()))) {
+        autoHideDuration = NOTIFICATION_RULES.quickSuccess.duration;
+    }
+    // Check for info messages
+    else if (NOTIFICATION_RULES.info.keywords.some(keyword => message.toLowerCase().includes(keyword.toLowerCase()))) {
+        autoHideDuration = NOTIFICATION_RULES.info.duration;
     }
 
     const notification = document.createElement('div');
@@ -217,17 +278,29 @@ function addNotification(message, type = 'info') {
     notification.appendChild(timestamp);
     notification.appendChild(close);
     
+    // Limit number of visible notifications
+    const existingNotifications = notificationArea.querySelectorAll('.notification');
+    if (existingNotifications.length >= MAX_VISIBLE_NOTIFICATIONS) {
+        // Remove oldest notification
+        const oldest = existingNotifications[existingNotifications.length - 1];
+        if (oldest) {
+            oldest.remove();
+        }
+    }
+    
     // Add to the top of the notification area
     notificationArea.insertBefore(notification, notificationArea.firstChild);
-    console.log('Notification added to DOM');
+    console.log('Notification added to DOM with auto-hide duration:', autoHideDuration);
     
-    // Auto-remove after duration
-    setTimeout(() => {
-        if (notification.parentNode === notificationArea) {
-            notification.remove();
-            console.log('Notification auto-removed');
-        }
-    }, NOTIFICATION_DURATION);
+    // Auto-remove after duration (but not for persistent errors unless they're old)
+    if (autoHideDuration < 10000) {
+        setTimeout(() => {
+            if (notification.parentNode === notificationArea) {
+                notification.remove();
+                console.log('Notification auto-removed after', autoHideDuration, 'ms');
+            }
+        }, autoHideDuration);
+    }
 }
 
 // Function to check backend status
