@@ -1,8 +1,5 @@
 from flask import jsonify, request, current_app, send_file
 from app.api import bp
-from app.services.embedding import get_embedding
-from app.services.faiss_index import FaissIndex
-from app.services.gemini_chat import GeminiChat
 import os
 import logging
 import json
@@ -12,27 +9,67 @@ import shutil
 import zipfile
 import uuid
 from datetime import datetime
+from typing import Dict, Any, List
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize services
+# Initialize services - lazy imports to avoid circular dependencies
 faiss_index = None
 gemini_chat = None
+cognitive_agent = None
+
+def _detect_category(result: Dict[str, Any]) -> str:
+    """Detect category for a search result."""
+    text = (result.get('title', '') + ' ' + result.get('content', '')).lower()
+    url = result.get('url', '').lower()
+    
+    # Category keyword detection
+    category_keywords = {
+        'Sports': ['sport', 'football', 'basketball', 'soccer', 'cricket', 'tennis', 'game', 'match', 'player', 'league', 'championship', 'tournament', 'olympic', 'athletics'],
+        'Politics': ['politic', 'government', 'election', 'president', 'senate', 'democracy', 'vote', 'congress', 'parliament', 'minister', 'party', 'candidate', 'campaign'],
+        'Financial': ['finance', 'money', 'stock', 'investment', 'bank', 'economy', 'market', 'business', 'financial', 'trading', 'currency', 'dollar', 'economy'],
+        'Health & Medical': ['health', 'medical', 'disease', 'doctor', 'hospital', 'medicine', 'treatment', 'wellness', 'cure', 'therapy', 'patient', 'clinic', 'pharmacy', 'symptom'],
+        'Current Affairs': ['news', 'current', 'breaking', 'recent', 'today', 'happening', 'update', 'report', 'event', 'announcement'],
+        'Technology': ['tech', 'computer', 'software', 'hardware', 'ai', 'programming', 'code', 'digital', 'internet', 'cyber', 'data', 'system', 'app', 'device', 'innovation'],
+    }
+    
+    for category, keywords in category_keywords.items():
+        if any(keyword in text or keyword in url for keyword in keywords):
+            return category
+    
+    return 'Others'
+
+def _categorize_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Categorize search results."""
+    for result in results:
+        result['category'] = _detect_category(result)
+    return results
 
 def init_services():
     """Initialize services within application context."""
-    global faiss_index, gemini_chat
+    global faiss_index, gemini_chat, cognitive_agent
+    from app.services.faiss_index import FaissIndex
+    from app.services.gemini_chat import GeminiChat
+    from app.agent import CognitiveAgent
+    
     if faiss_index is None:
         faiss_index = FaissIndex(current_app.config['FAISS_INDEX_PATH'])
-    if gemini_chat is None:
-        gemini_chat = GeminiChat(current_app.config['GEMINI_API_KEY'])
+    if gemini_chat is None and current_app.config.get('GEMINI_API_KEY'):
+        try:
+            gemini_chat = GeminiChat(current_app.config['GEMINI_API_KEY'])
+        except Exception as e:
+            logger.warning(f'Could not initialize Gemini chat: {e}')
+            gemini_chat = None
+    if cognitive_agent is None:
+        cognitive_agent = CognitiveAgent(faiss_index=faiss_index, gemini_chat=gemini_chat)
 
 @bp.route('/index', methods=['POST'])
 def index_page():
     """Index a web page's content."""
     init_services()
+    from app.services.embedding import get_embedding
     data = request.get_json()
     
     if not data or 'url' not in data or 'content' not in data:
@@ -65,32 +102,56 @@ def index_page():
 
 @bp.route('/search', methods=['POST'])
 def search():
-    """Search the index for similar content."""
+    """Search the index for similar content using cognitive agent."""
     init_services()
+    from app.services.embedding import get_embedding
     data = request.get_json()
     
     if not data or 'query' not in data:
         return jsonify({'error': 'Missing query'}), 400
     
     try:
-        # Get embedding for the query
-        query_embedding = get_embedding(data['query'])
+        # Get user context/preferences
+        user_context = data.get('user_context', {})
         
-        # Search the index
-        results = faiss_index.search(query_embedding, k=5)
+        # Try to use cognitive agent, but fall back to direct search if agent not available
+        search_results = []
+        if cognitive_agent and cognitive_agent.faiss_index:
+            try:
+                logger.info("Using cognitive agent for search")
+                result = cognitive_agent.process_user_query(data['query'], user_context)
+                
+                # Extract action results
+                action_results = result.get('action', {}).get('search', {})
+                search_results = action_results.get('results', [])
+            except Exception as agent_error:
+                logger.error(f"Cognitive agent failed, falling back to direct search: {agent_error}")
+                # Fall back to direct search
+                query_embedding = get_embedding(data['query'])
+                search_results = faiss_index.search(query_embedding, k=10)
+                # Categorize results
+                search_results = _categorize_results(search_results)
+        else:
+            # Direct search fallback
+            logger.info("Using direct search (cognitive agent not available)")
+            query_embedding = get_embedding(data['query'])
+            search_results = faiss_index.search(query_embedding, k=10)
+            # Categorize results
+            search_results = _categorize_results(search_results)
         
         return jsonify({
             'success': True,
-            'results': results
+            'results': search_results
         })
     except Exception as e:
-        logger.error(f'Error searching: {str(e)}')
+        logger.error(f'Error searching: {str(e)}', exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 @bp.route('/chat', methods=['POST'])
 def chat():
     """Chat with Gemini about the indexed content."""
     init_services()
+    from app.services.embedding import get_embedding
     data = request.get_json()
     
     if not data or 'query' not in data:
@@ -127,6 +188,7 @@ def health_check():
 @bp.route('/embed', methods=['POST'])
 def get_text_embedding():
     """Get embedding for the given text."""
+    from app.services.embedding import get_embedding
     data = request.get_json()
     
     if not data or 'text' not in data:
@@ -148,6 +210,7 @@ def get_text_embedding():
 def regenerate_test_data():
     """Regenerate test data in the index."""
     init_services()
+    from app.services.embedding import get_embedding
     
     try:
         # Clear existing index
@@ -312,4 +375,153 @@ def clear_index():
         })
     except Exception as e:
         logger.error(f'Error clearing index: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+@bp.route('/preferences', methods=['GET'])
+def get_preferences():
+    """Get user preferences."""
+    init_services()
+    
+    try:
+        preferences = cognitive_agent.get_user_preferences()
+        return jsonify({
+            'success': True,
+            'preferences': preferences
+        })
+    except Exception as e:
+        logger.error(f'Error getting preferences: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+@bp.route('/preferences', methods=['POST'])
+def update_preferences():
+    """Update user preferences."""
+    init_services()
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({'error': 'Missing preferences data'}), 400
+    
+    try:
+        success = cognitive_agent.update_user_preferences(data)
+        
+        return jsonify({
+            'success': success,
+            'message': 'Preferences updated successfully' if success else 'Failed to update preferences'
+        })
+    except Exception as e:
+        logger.error(f'Error updating preferences: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+@bp.route('/favorites', methods=['GET'])
+def get_favorites():
+    """Get user's favorite items."""
+    init_services()
+    
+    try:
+        preferences = cognitive_agent.get_user_preferences()
+        favorites = preferences.get('favorites', [])
+        
+        return jsonify({
+            'success': True,
+            'favorites': favorites
+        })
+    except Exception as e:
+        logger.error(f'Error getting favorites: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+@bp.route('/favorites', methods=['POST'])
+def add_favorite():
+    """Add item to favorites."""
+    init_services()
+    data = request.get_json()
+    
+    if not data or 'url' not in data:
+        return jsonify({'error': 'Missing required data'}), 400
+    
+    try:
+        preferences = cognitive_agent.get_user_preferences()
+        favorites = preferences.get('favorites', [])
+        
+        # Check if already in favorites
+        if any(fav.get('url') == data['url'] for fav in favorites):
+            return jsonify({
+                'success': False,
+                'message': 'Item already in favorites'
+            })
+        
+        # Add to favorites
+        favorites.append({
+            'url': data['url'],
+            'title': data.get('title', ''),
+            'content': data.get('content', ''),
+            'added_at': datetime.now().isoformat()
+        })
+        
+        # Update preferences
+        preferences['favorites'] = favorites
+        cognitive_agent.update_user_preferences(preferences)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Item added to favorites',
+            'favorites': favorites
+        })
+    except Exception as e:
+        logger.error(f'Error adding favorite: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+@bp.route('/favorites', methods=['DELETE'])
+def remove_favorite():
+    """Remove item from favorites."""
+    init_services()
+    data = request.get_json()
+    
+    if not data or 'url' not in data:
+        return jsonify({'error': 'Missing URL'}), 400
+    
+    try:
+        preferences = cognitive_agent.get_user_preferences()
+        favorites = preferences.get('favorites', [])
+        
+        # Remove from favorites
+        favorites = [fav for fav in favorites if fav.get('url') != data['url']]
+        
+        # Update preferences
+        preferences['favorites'] = favorites
+        cognitive_agent.update_user_preferences(preferences)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Item removed from favorites',
+            'favorites': favorites
+        })
+    except Exception as e:
+        logger.error(f'Error removing favorite: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+@bp.route('/categorize', methods=['POST'])
+def categorize():
+    """Categorize content."""
+    init_services()
+    data = request.get_json()
+    
+    if not data or 'content' not in data:
+        return jsonify({'error': 'Missing content'}), 400
+    
+    try:
+        # Get user context
+        user_context = data.get('user_context', {})
+        
+        # Use decision layer to categorize via cognitive agent
+        if cognitive_agent:
+            categorization = cognitive_agent.decision.categorize_content(data, user_context)
+        else:
+            categorization = {'categories': ['Others'], 'confidence': 0.5}
+        
+        return jsonify({
+            'success': True,
+            'categorization': categorization
+        })
+    except Exception as e:
+        logger.error(f'Error categorizing: {str(e)}')
         return jsonify({'error': str(e)}), 500 

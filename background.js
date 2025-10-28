@@ -402,7 +402,7 @@ async function saveIndex() {
 }
 
 // Search the index
-async function searchIndex(query) {
+async function searchIndex(query, userContext = {}) {
   console.log(`Searching for: "${query}"`);
   
   try {
@@ -413,7 +413,8 @@ async function searchIndex(query) {
       },
       body: JSON.stringify({
         query: query,
-        limit: 10  // Limit results to prevent duplicates
+        limit: 10,  // Limit results to prevent duplicates
+        user_context: userContext
       })
     });
     
@@ -841,7 +842,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     if (message.action === 'search') {
         console.log('Search request received:', message.query);
-        searchIndex(message.query)
+        const userContext = message.user_context || {};
+        searchIndex(message.query, userContext)
             .then(results => {
                 console.log(`Sending ${results.length} search results`);
                 sendResponse({ results });

@@ -321,6 +321,8 @@
   
   <div class="tabs">
     <div class="tab active" data-tab="search">Search</div>
+    <div class="tab" data-tab="preferences">Preferences</div>
+    <div class="tab" data-tab="favorites">Favorites</div>
     <div class="tab" data-tab="settings">Settings</div>
     <div class="tab" data-tab="export">Export</div>
   </div>
@@ -338,6 +340,50 @@
     <div class="stats" id="search-stats"></div>
     
     <div id="search-results"></div>
+  </div>
+  
+  <div class="tab-content" id="preferences-tab">
+    <h3>User Preferences</h3>
+    
+    <label style="display: block; margin-bottom: 5px;">Interests:</label>
+    <input type="text" id="pref-interests" placeholder="e.g., technology, sports, finance">
+    
+    <label style="display: block; margin-bottom: 5px; margin-top: 10px;">Location:</label>
+    <input type="text" id="pref-location" placeholder="e.g., New York, USA">
+    
+    <label style="display: block; margin-bottom: 5px; margin-top: 10px;">Favorite Topics:</label>
+    <input type="text" id="pref-topics" placeholder="e.g., AI, web development, data science">
+    
+    <label style="display: block; margin-bottom: 5px; margin-top: 10px;">Taste/Preferences:</label>
+    <input type="text" id="pref-taste" placeholder="e.g., detailed, concise, technical">
+    
+    <div style="margin-top: 20px;">
+      <h4>Search Options</h4>
+      <label style="display: flex; align-items: center; margin: 10px 0;">
+        <input type="checkbox" id="highlight-search-terms" checked style="margin-right: 5px;">
+        Highlight search terms
+      </label>
+      <label style="display: flex; align-items: center; margin: 10px 0;">
+        <input type="checkbox" id="categorize-results" style="margin-right: 5px;">
+        Categorize search results
+      </label>
+      <label style="display: flex; align-items: center; margin: 10px 0;">
+        <input type="checkbox" id="skip-confidential" checked style="margin-right: 5px;">
+        Skip confidential sites
+      </label>
+    </div>
+    
+    <div style="margin-top: 20px;">
+      <h4>Preferred Categories</h4>
+      <div id="category-checkboxes"></div>
+    </div>
+    
+    <button id="save-preferences" style="margin-top: 20px;">Save Preferences</button>
+  </div>
+  
+  <div class="tab-content" id="favorites-tab">
+    <h3>Favorites</h3>
+    <div id="favorites-list"></div>
   </div>
   
   <div class="tab-content" id="settings-tab">

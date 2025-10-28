@@ -60,7 +60,13 @@ tabs.forEach(tab => {
     document.getElementById(`${tabId}-tab`).classList.add('active');
     
     // Load tab-specific data
-    if (tabId === 'settings') {
+    if (tabId === 'preferences') {
+      console.log('Loading preferences tab');
+      loadUserPreferences();
+    } else if (tabId === 'favorites') {
+      console.log('Loading favorites tab');
+      loadFavorites();
+    } else if (tabId === 'settings') {
       console.log('Loading settings tab');
       loadConfidentialSites();
     } else if (tabId === 'export') {
@@ -88,6 +94,16 @@ downloadIndexButton.addEventListener('click', downloadIndex);
 document.addEventListener('DOMContentLoaded', function() {
     // Clear all data functionality - must be inside DOMContentLoaded
     document.getElementById('clear-all-data').addEventListener('click', clearAllData);
+    
+    // Save preferences functionality
+    document.getElementById('save-preferences').addEventListener('click', saveUserPreferences);
+    
+    // Initialize category checkboxes
+    initializeCategoryCheckboxes();
+    
+    // Load preferences
+    loadUserPreferences();
+    
     console.log('Popup DOM loaded');
     
     // Initialize notification area
@@ -100,6 +116,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load settings when opening the popup
     loadConfidentialSites();
+    
+    // Load favorites
+    loadFavorites();
 
     // Initialize the extension
     chrome.runtime.sendMessage({ action: 'init' }, response => {
@@ -351,7 +370,30 @@ async function performSearch() {
   searchResults.innerHTML = '<p>Searching...</p>';
   
   try {
-    const response = await chrome.runtime.sendMessage({ action: 'search', query: query });
+    // Get user preferences for context
+    let userContext = {};
+    try {
+      const prefsResponse = await fetch('http://localhost:5000/api/preferences');
+      
+      if (!prefsResponse.ok) {
+        console.log(`Preferences endpoint returned HTTP ${prefsResponse.status} - backend may not have new routes yet`);
+        userContext = {};
+      } else {
+        const prefsResult = await prefsResponse.json();
+        if (prefsResult.success) {
+          userContext = prefsResult.preferences;
+        }
+      }
+    } catch (error) {
+      console.log('Preferences not available yet (normal if backend not restarted):', error.message);
+      userContext = {};
+    }
+    
+    const response = await chrome.runtime.sendMessage({ 
+      action: 'search', 
+      query: query,
+      user_context: userContext
+    });
     
     if (response && response.results) {
       // Remove duplicates based on URL
@@ -382,8 +424,9 @@ async function performSearch() {
         resultItem.className = 'result-item';
         
         // Create title element if title exists
+        let resultTitle = null;
         if (result.title) {
-          const resultTitle = document.createElement('div');
+          resultTitle = document.createElement('div');
           resultTitle.className = 'result-title';
           resultTitle.textContent = result.title;
           resultItem.appendChild(resultTitle);
@@ -500,6 +543,34 @@ async function performSearch() {
             console.error('Error handling result click:', error);
           }
         });
+        
+        // Add "Add to Favorites" button
+        const favoriteBtn = document.createElement('button');
+        favoriteBtn.textContent = 'Add to Favorites';
+        favoriteBtn.style.background = '#4caf50';
+        favoriteBtn.style.marginTop = '5px';
+        favoriteBtn.onclick = () => addFavorite(result.url, result.title || '', result.content || '');
+        resultItem.appendChild(favoriteBtn);
+        
+        // Add category tag if available
+        if (result.category && resultTitle) {
+          const categoryTag = document.createElement('span');
+          categoryTag.className = 'category-tag';
+          categoryTag.textContent = result.category;
+          categoryTag.style.cssText = `
+            background-color: #e3f2fd;
+            color: #1565c0;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-left: 5px;
+            display: inline-block;
+          `;
+          
+          // Insert category tag after title
+          resultTitle.appendChild(categoryTag);
+        }
         
         resultItem.appendChild(resultText);
         resultItem.appendChild(resultUrl);
@@ -874,5 +945,238 @@ async function clearAllData() {
     } catch (error) {
         console.error('Error clearing indexed data:', error);
         addNotification(`Error clearing data: ${error.message}`, 'error');
+    }
+}
+
+// Function to initialize category checkboxes
+function initializeCategoryCheckboxes() {
+    const categories = ['Sports', 'Politics', 'Financial', 'Health & Medical', 'Current Affairs', 'Technology', 'Others'];
+    const container = document.getElementById('category-checkboxes');
+    
+    categories.forEach(category => {
+        const label = document.createElement('label');
+        label.style.display = 'flex';
+        label.style.alignItems = 'center';
+        label.style.margin = '5px 0';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = category;
+        checkbox.id = `category-${category.toLowerCase().replace(/\s+/g, '-')}`;
+        checkbox.style.marginRight = '5px';
+        
+        const text = document.createTextNode(category);
+        
+        label.appendChild(checkbox);
+        label.appendChild(text);
+        container.appendChild(label);
+    });
+}
+
+// Function to load user preferences
+async function loadUserPreferences() {
+    try {
+        const response = await fetch('http://localhost:5000/api/preferences');
+        
+        if (!response.ok) {
+            console.error(`HTTP error loading preferences: ${response.status}`);
+            return;
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            const prefs = result.preferences;
+            
+            document.getElementById('pref-interests').value = prefs.interests || '';
+            document.getElementById('pref-location').value = prefs.location || '';
+            document.getElementById('pref-topics').value = prefs.favorite_topics || '';
+            document.getElementById('pref-taste').value = prefs.taste_preferences || '';
+            
+            document.getElementById('highlight-search-terms').checked = prefs.highlight_search_terms !== false;
+            document.getElementById('categorize-results').checked = prefs.categorize_results === true;
+            document.getElementById('skip-confidential').checked = prefs.skip_confidential_sites !== false;
+            
+            // Set category checkboxes
+            if (prefs.categories && Array.isArray(prefs.categories)) {
+                prefs.categories.forEach(category => {
+                    const checkbox = document.getElementById(`category-${category.toLowerCase().replace(/\s+/g, '-')}`);
+                    if (checkbox) {
+                        checkbox.checked = true;
+                    }
+                });
+            }
+        }
+    } catch (error) {
+        console.error('Error loading preferences:', error);
+    }
+}
+
+// Function to save user preferences
+async function saveUserPreferences() {
+    const interests = document.getElementById('pref-interests').value;
+    const location = document.getElementById('pref-location').value;
+    const topics = document.getElementById('pref-topics').value;
+    const taste = document.getElementById('pref-taste').value;
+    
+    const highlight = document.getElementById('highlight-search-terms').checked;
+    const categorize = document.getElementById('categorize-results').checked;
+    const skipConf = document.getElementById('skip-confidential').checked;
+    
+    // Get selected categories
+    const categoryCheckboxes = document.querySelectorAll('#category-checkboxes input[type="checkbox"]');
+    const selectedCategories = Array.from(categoryCheckboxes)
+        .filter(cb => cb.checked)
+        .map(cb => cb.value);
+    
+    const preferences = {
+        interests,
+        location,
+        favorite_topics: topics,
+        taste_preferences: taste,
+        highlight_search_terms: highlight,
+        categorize_results: categorize,
+        skip_confidential_sites: skipConf,
+        categories: selectedCategories
+    };
+    
+    try {
+        const response = await fetch('http://localhost:5000/api/preferences', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(preferences)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            addNotification('Preferences saved successfully', 'success');
+        } else {
+            addNotification('Failed to save preferences', 'error');
+        }
+    } catch (error) {
+        console.error('Error saving preferences:', error);
+        addNotification(`Error saving preferences: ${error.message}. Make sure backend server is running and has been restarted.`, 'error');
+    }
+}
+
+// Function to load favorites
+async function loadFavorites() {
+    const favoritesList = document.getElementById('favorites-list');
+    
+    try {
+        const response = await fetch('http://localhost:5000/api/favorites');
+        
+        if (!response.ok) {
+            console.log('Favorites endpoint not available yet');
+            favoritesList.innerHTML = '<p>Favorites feature coming soon. Please restart backend server.</p>';
+            return;
+        }
+        
+        const result = await response.json();
+        
+        if (result.success && result.favorites && result.favorites.length > 0) {
+            favoritesList.innerHTML = '';
+            
+            result.favorites.forEach(fav => {
+                const item = document.createElement('div');
+                item.className = 'result-item';
+                item.style.marginBottom = '10px';
+                
+                if (fav.title) {
+                    const title = document.createElement('div');
+                    title.className = 'result-title';
+                    title.textContent = fav.title;
+                    item.appendChild(title);
+                }
+                
+                const url = document.createElement('a');
+                url.className = 'result-url';
+                url.href = fav.url;
+                url.textContent = fav.url;
+                url.target = '_blank';
+                item.appendChild(url);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Remove';
+                deleteBtn.style.background = '#d32f2f';
+                deleteBtn.style.marginTop = '5px';
+                deleteBtn.onclick = () => removeFavorite(fav.url);
+                item.appendChild(deleteBtn);
+                
+                favoritesList.appendChild(item);
+            });
+        } else {
+            favoritesList.innerHTML = '<p>No favorites yet. Search results can be marked as favorites.</p>';
+        }
+    } catch (error) {
+        console.log('Favorites not available:', error.message);
+        favoritesList.innerHTML = '<p>Favorites feature not available yet. Please restart backend server with new routes.</p>';
+    }
+}
+
+// Function to add item to favorites
+async function addFavorite(url, title, content) {
+    try {
+        const response = await fetch('http://localhost:5000/api/favorites', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                url,
+                title,
+                content
+            })
+        });
+        
+        if (!response.ok) {
+            console.log('Favorites endpoint not available');
+            addNotification('Favorites feature not available yet. Please restart backend.', 'error');
+            return;
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            addNotification('Added to favorites', 'success');
+        }
+    } catch (error) {
+        console.log('Favorites not available:', error.message);
+        addNotification('Favorites feature not available yet', 'error');
+    }
+}
+
+// Function to remove item from favorites
+async function removeFavorite(url) {
+    try {
+        const response = await fetch('http://localhost:5000/api/favorites', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ url })
+        });
+        
+        if (!response.ok) {
+            addNotification('Favorites feature not available', 'error');
+            return;
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            loadFavorites();
+            addNotification('Removed from favorites', 'success');
+        }
+    } catch (error) {
+        console.log('Favorites not available:', error.message);
+        addNotification('Favorites feature not available yet', 'error');
     }
 } 
