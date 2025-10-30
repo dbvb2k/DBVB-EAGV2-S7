@@ -13,6 +13,7 @@ const tabs = document.querySelectorAll('.tab');
 const tabContents = document.querySelectorAll('.tab-content');
 const backendStatus = document.getElementById('backend-status');
 const notificationArea = document.getElementById('notification-area');
+let availableCategories = ['Sports', 'Politics', 'Financial', 'Health & Medical', 'Current Affairs', 'Technology', 'Others'];
 
 console.log('Popup script loaded');
 
@@ -589,6 +590,67 @@ async function performSearch() {
           
           // Insert category tag after title
           resultTitle.appendChild(categoryTag);
+
+          // Add inline category editor (dropdown + save)
+          const catEditor = document.createElement('span');
+          catEditor.style.marginLeft = '8px';
+
+          const select = document.createElement('select');
+          select.style.fontSize = '11px';
+          select.style.padding = '2px 4px';
+          select.style.border = '1px solid #ddd';
+          select.style.borderRadius = '4px';
+          // Prevent navigation from title click when interacting with the select
+          select.addEventListener('click', (e) => { e.stopPropagation(); });
+          select.addEventListener('mousedown', (e) => { e.stopPropagation(); });
+          select.addEventListener('touchstart', (e) => { e.stopPropagation(); }, { passive: true });
+          select.addEventListener('change', (e) => { e.stopPropagation(); });
+          availableCategories.forEach(cat => {
+            const opt = document.createElement('option');
+            opt.value = cat;
+            opt.textContent = cat;
+            if ((result.category || '').toLowerCase() === cat.toLowerCase()) {
+              opt.selected = true;
+            }
+            select.appendChild(opt);
+          });
+
+          const saveBtn = document.createElement('button');
+          saveBtn.textContent = 'Save';
+          saveBtn.style.marginLeft = '4px';
+          saveBtn.style.padding = '2px 6px';
+          saveBtn.style.fontSize = '11px';
+          saveBtn.style.background = '#1976d2';
+
+          saveBtn.onclick = async (e) => {
+            e.stopPropagation();
+            const newCat = select.value;
+            try {
+              const fbResp = await fetch('http://localhost:5000/api/classification/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  url: result.url,
+                  title: result.title || '',
+                  content: result.content || '',
+                  category: newCat
+                })
+              });
+              const fbJson = await fbResp.json();
+              if (fbResp.ok && fbJson.success) {
+                categoryTag.textContent = newCat;
+                addNotification('Category feedback saved', 'success');
+              } else {
+                addNotification(`Failed to save feedback: ${fbJson.error || 'Unknown error'}`, 'error');
+              }
+            } catch (err) {
+              addNotification(`Error saving feedback: ${err.message}`, 'error');
+            }
+          };
+
+          catEditor.appendChild(select);
+          catEditor.appendChild(saveBtn);
+          resultTitle.appendChild(catEditor);
         }
         
         resultItem.appendChild(resultText);
@@ -1018,6 +1080,7 @@ async function loadUserPreferences() {
             
             // Set category checkboxes
             if (prefs.categories && Array.isArray(prefs.categories)) {
+                availableCategories = [...prefs.categories, 'Others'];
                 prefs.categories.forEach(category => {
                     const checkbox = document.getElementById(`category-${category.toLowerCase().replace(/\s+/g, '-')}`);
                     if (checkbox) {

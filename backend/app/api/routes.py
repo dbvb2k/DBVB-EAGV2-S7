@@ -41,11 +41,29 @@ def _detect_category(result: Dict[str, Any]) -> str:
     
     return 'Others'
 
-def _categorize_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Categorize search results."""
-    for result in results:
-        result['category'] = _detect_category(result)
-    return results
+def _categorize_results(results: List[Dict[str, Any]], user_context: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    """Categorize search results (embedding-prototype if possible, else keyword fallback)."""
+    try:
+        from app.services.classifier import classify_results_with_prototypes
+        # Use user selected categories if provided, else default known set
+        prefs_categories = []
+        if user_context and isinstance(user_context.get('categories', None), list):
+            prefs_categories = user_context.get('categories')
+        if not prefs_categories:
+            prefs_categories = ['Sports', 'Politics', 'Financial', 'Health & Medical', 'Current Affairs', 'Technology', 'Others']
+
+        # Load preferences via cognitive agent if available to use feedback/overrides
+        try:
+            preferences = cognitive_agent.get_user_preferences() if cognitive_agent else {}
+        except Exception:
+            preferences = {}
+
+        return classify_results_with_prototypes(results, prefs_categories, preferences)
+    except Exception as e:
+        logger.warning(f"Embedding-based categorization failed, using keyword fallback: {e}")
+        for result in results:
+            result['category'] = _detect_category(result)
+        return results
 
 def init_services():
     """Initialize services within application context."""
@@ -130,14 +148,14 @@ def search():
                 query_embedding = get_embedding(data['query'])
                 search_results = faiss_index.search(query_embedding, k=10)
                 # Categorize results
-                search_results = _categorize_results(search_results)
+                search_results = _categorize_results(search_results, user_context)
         else:
             # Direct search fallback
             logger.info("Using direct search (cognitive agent not available)")
             query_embedding = get_embedding(data['query'])
             search_results = faiss_index.search(query_embedding, k=10)
             # Categorize results
-            search_results = _categorize_results(search_results)
+            search_results = _categorize_results(search_results, user_context)
         
         return jsonify({
             'success': True,
@@ -525,3 +543,32 @@ def categorize():
     except Exception as e:
         logger.error(f'Error categorizing: {str(e)}')
         return jsonify({'error': str(e)}), 500 
+
+@bp.route('/classification/feedback', methods=['POST'])
+def classification_feedback():
+    """Accept user category correction feedback and store in preferences for future prototype updates."""
+    init_services()
+    data = request.get_json()
+    if not data or 'url' not in data or 'category' not in data:
+        return jsonify({'error': 'Missing required fields (url, category)'}), 400
+    try:
+        url = data['url']
+        category = data['category']
+        title = data.get('title', '')
+        content = data.get('content', '')
+
+        # Get and update preferences
+        preferences = cognitive_agent.get_user_preferences() if cognitive_agent else {}
+        from app.services.classifier import record_feedback
+        preferences = record_feedback(preferences, url, title, content, category)
+        ok = True
+        if cognitive_agent:
+            ok = cognitive_agent.update_user_preferences(preferences)
+
+        return jsonify({
+            'success': bool(ok),
+            'message': 'Feedback recorded' if ok else 'Failed to store feedback'
+        })
+    except Exception as e:
+        logger.error(f'Error recording classification feedback: {str(e)}')
+        return jsonify({'error': str(e)}), 500
