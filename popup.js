@@ -441,8 +441,8 @@ async function performSearch() {
         resultUrl.href = result.url;
         resultUrl.textContent = result.url;
         
-        // Add click handler for highlighting
-        resultItem.addEventListener('click', async () => {
+        // Create click handler for navigation
+        const handleNavigate = async () => {
           try {
             // Get the active tab
             const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -542,14 +542,29 @@ async function performSearch() {
           } catch (error) {
             console.error('Error handling result click:', error);
           }
-        });
+        };
+        
+        // Add click handler to title for navigation
+        if (resultTitle) {
+          resultTitle.style.cursor = 'pointer';
+          resultTitle.onclick = handleNavigate;
+        }
+        
+        // Add click handler to URL for navigation
+        resultUrl.onclick = (e) => {
+          e.preventDefault(); // Prevent default link behavior
+          handleNavigate();
+        };
         
         // Add "Add to Favorites" button
         const favoriteBtn = document.createElement('button');
         favoriteBtn.textContent = 'Add to Favorites';
         favoriteBtn.style.background = '#4caf50';
         favoriteBtn.style.marginTop = '5px';
-        favoriteBtn.onclick = () => addFavorite(result.url, result.title || '', result.content || '');
+        favoriteBtn.onclick = (e) => {
+          e.stopPropagation(); // Prevent event from bubbling to resultItem
+          addFavorite(result.url, result.title || '', result.content || '');
+        };
         resultItem.appendChild(favoriteBtn);
         
         // Add category tag if available

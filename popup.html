@@ -99,7 +99,6 @@
       border: 1px solid #ddd;
       border-radius: 4px;
       background: #f9f9f9;
-      cursor: pointer;
       transition: background-color 0.2s;
     }
     .result-item:hover {
@@ -113,6 +112,9 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+    .result-title:hover {
+      text-decoration: underline;
     }
     .result-text {
       max-height: 100px;
@@ -345,17 +347,17 @@
   <div class="tab-content" id="preferences-tab">
     <h3>User Preferences</h3>
     
-    <label style="display: block; margin-bottom: 5px;">Interests:</label>
-    <input type="text" id="pref-interests" placeholder="e.g., technology, sports, finance">
+    <label style="display: none;">Interests:</label>
+    <input type="text" id="pref-interests" placeholder="e.g., technology, sports, finance" style="display: none;">
     
-    <label style="display: block; margin-bottom: 5px; margin-top: 10px;">Location:</label>
-    <input type="text" id="pref-location" placeholder="e.g., New York, USA">
+    <label style="display: none;">Location:</label>
+    <input type="text" id="pref-location" placeholder="e.g., New York, USA" style="display: none;">
     
-    <label style="display: block; margin-bottom: 5px; margin-top: 10px;">Favorite Topics:</label>
-    <input type="text" id="pref-topics" placeholder="e.g., AI, web development, data science">
+    <label style="display: none;">Favorite Topics:</label>
+    <input type="text" id="pref-topics" placeholder="e.g., AI, web development, data science" style="display: none;">
     
-    <label style="display: block; margin-bottom: 5px; margin-top: 10px;">Taste/Preferences:</label>
-    <input type="text" id="pref-taste" placeholder="e.g., detailed, concise, technical">
+    <label style="display: none;">Taste/Preferences:</label>
+    <input type="text" id="pref-taste" placeholder="e.g., detailed, concise, technical" style="display: none;">
     
     <div style="margin-top: 20px;">
       <h4>Search Options</h4>
