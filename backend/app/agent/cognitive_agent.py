@@ -71,7 +71,8 @@ class CognitiveAgent:
                 decision=decision_result,
                 context={
                     'perception': perception_result,
-                    'memory': memory_result
+                    'memory': memory_result,
+                    'user_context': user_context or {}
                 }
             )
             

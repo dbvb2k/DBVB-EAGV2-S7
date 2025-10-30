@@ -190,7 +190,6 @@ class MemoryLayer:
         
         # Get preference settings
         skip_confidential = user_context.get('skip_confidential_sites', True)
-        categories = user_context.get('categories', [])
         
         filtered = []
         
@@ -201,13 +200,8 @@ class MemoryLayer:
                 if self._is_confidential(url):
                     continue
             
-            # Check category preferences
-            if categories:
-                result_category = result.get('category', 'Others')
-                if categories and result_category not in categories:
-                    # Still include but with lower priority
-                    result['relevance_adjusted'] = True
-                    result['score'] = result.get('score', 0.5) * 0.5
+            # Note: Category filtering is handled in the action layer after categorization
+            # Don't filter or adjust scores by category here since categories aren't set yet
             
             filtered.append(result)
         

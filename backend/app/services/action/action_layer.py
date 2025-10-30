@@ -31,6 +31,11 @@ class ActionLayer:
             actions = decision.get('actions', ['search'])
             results = {}
             
+            # Debug: Log context structure
+            logger.info(f"Action execute - context keys: {context.keys() if context else 'None'}")
+            if context and 'memory' in context:
+                logger.info(f"Action execute - memory keys: {context['memory'].keys() if isinstance(context['memory'], dict) else 'Not a dict'}")
+            
             # Execute each action in priority order
             for action in actions:
                 if action == 'search':
@@ -46,7 +51,7 @@ class ActionLayer:
             return results
             
         except Exception as e:
-            logger.error(f"Error executing actions: {e}")
+            logger.error(f"Error executing actions: {e}", exc_info=True)
             return {'error': str(e)}
     
     def _execute_search(self, query: str, decision: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
@@ -55,20 +60,24 @@ class ActionLayer:
             # Get memories from context
             memory_results = context.get('memory', {}).get('long_term', [])
             
+            logger.info(f"Found {len(memory_results)} memory results from context")
+            
+            # Categorize results BEFORE filtering (so filter can use categories)
+            user_context = context.get('user_context', {})
+            for result in memory_results:
+                # Add category tag to result
+                category = self._detect_category(result, user_context)
+                result['category'] = category
+            
             # Apply filtering rules
             filtering_rules = decision.get('filtering_rules', {})
             filtered_results = self._apply_filters(memory_results, filtering_rules)
             
+            logger.info(f"After filtering: {len(filtered_results)} results")
+            
             # Apply scoring
             scoring_config = decision.get('scoring_config', {})
             scored_results = self._apply_scoring(filtered_results, scoring_config)
-            
-            # Categorize results automatically
-            user_context = context.get('user_context', {})
-            for result in scored_results:
-                # Add category tag to result
-                category = self._detect_category(result, user_context)
-                result['category'] = category
             
             # Sort by score
             scored_results.sort(key=lambda x: x.get('score', 0), reverse=True)
@@ -80,7 +89,7 @@ class ActionLayer:
             }
             
         except Exception as e:
-            logger.error(f"Error executing search: {e}")
+            logger.error(f"Error executing search: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
     
     def _execute_highlight(self, query: str, decision: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
@@ -102,15 +111,19 @@ class ActionLayer:
     def _apply_filters(self, results: List[Dict[str, Any]], filtering_rules: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Apply filtering rules to results."""
         if not filtering_rules:
+            logger.info("No filtering rules, returning all results")
             return results
         
         filtered = []
+        filtered_out_confidential = 0
+        filtered_out_score = 0
         
         for result in results:
             # Filter confidential sites
             if filtering_rules.get('skip_confidential_sites', False):
                 url = result.get('url', '')
                 if self._is_confidential(url):
+                    filtered_out_confidential += 1
                     continue
             
             # Filter by category
@@ -124,9 +137,14 @@ class ActionLayer:
             
             # Filter by minimum relevance
             min_score = filtering_rules.get('min_relevance_score', 0)
-            if result.get('score', 0) >= min_score:
+            result_score = result.get('score', 0)
+            if result_score >= min_score:
                 filtered.append(result)
+            else:
+                filtered_out_score += 1
+                logger.debug(f"Filtered out result with score {result_score} < {min_score}: {result.get('url', 'unknown')}")
         
+        logger.info(f"Filtering: {len(results)} -> {len(filtered)} (confidential: {filtered_out_confidential}, low score: {filtered_out_score})")
         return filtered
     
     def _apply_scoring(self, results: List[Dict[str, Any]], scoring_config: Dict[str, Any]) -> List[Dict[str, Any]]:
