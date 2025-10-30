@@ -313,6 +313,15 @@
         opacity: 1;
       }
     }
+    /* Preferred Categories: 3 per row with 8px gap */
+    #category-checkboxes {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    #category-checkboxes > label {
+      margin: 0 !important;
+    }
   </style>
 </head>
 <body>
@@ -323,7 +332,6 @@
   
   <div class="tabs">
     <div class="tab active" data-tab="search">Search</div>
-    <div class="tab" data-tab="preferences">Preferences</div>
     <div class="tab" data-tab="favorites">Favorites</div>
     <div class="tab" data-tab="settings">Settings</div>
     <div class="tab" data-tab="export">Export</div>
@@ -344,8 +352,22 @@
     <div id="search-results"></div>
   </div>
   
-  <div class="tab-content" id="preferences-tab">
-    <h3>User Preferences</h3>
+  
+  
+  <div class="tab-content" id="favorites-tab">
+    <h3>Favorites</h3>
+    <div id="favorites-list"></div>
+  </div>
+  
+  <div class="tab-content" id="settings-tab">
+    <h3>Confidential Sites</h3>
+    <p>Enter one site pattern per line. URLs matching these patterns will be skipped.</p>
+    <textarea id="confidential-sites" rows="6"></textarea>
+    <button id="save-settings">Save Settings</button>
+    
+    <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
+    
+    <h3>Preferences</h3>
     
     <label style="display: none;">Interests:</label>
     <input type="text" id="pref-interests" placeholder="e.g., technology, sports, finance" style="display: none;">
@@ -381,18 +403,6 @@
     </div>
     
     <button id="save-preferences" style="margin-top: 20px;">Save Preferences</button>
-  </div>
-  
-  <div class="tab-content" id="favorites-tab">
-    <h3>Favorites</h3>
-    <div id="favorites-list"></div>
-  </div>
-  
-  <div class="tab-content" id="settings-tab">
-    <h3>Confidential Sites</h3>
-    <p>Enter one site pattern per line. URLs matching these patterns will be skipped.</p>
-    <textarea id="confidential-sites" rows="6"></textarea>
-    <button id="save-settings">Save Settings</button>
     
     <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
     

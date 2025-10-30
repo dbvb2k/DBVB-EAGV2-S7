@@ -60,15 +60,19 @@ tabs.forEach(tab => {
     document.getElementById(`${tabId}-tab`).classList.add('active');
     
     // Load tab-specific data
-    if (tabId === 'preferences') {
-      console.log('Loading preferences tab');
-      loadUserPreferences();
-    } else if (tabId === 'favorites') {
+    if (tabId === 'favorites') {
       console.log('Loading favorites tab');
       loadFavorites();
     } else if (tabId === 'settings') {
       console.log('Loading settings tab');
       loadConfidentialSites();
+      // Also load user preferences when opening settings
+      // Initialize categories only once to avoid duplicates
+      const catContainer = document.getElementById('category-checkboxes');
+      if (catContainer && catContainer.childElementCount === 0) {
+        initializeCategoryCheckboxes();
+      }
+      loadUserPreferences();
     } else if (tabId === 'export') {
       console.log('Loading export tab');
       getIndexStats();
