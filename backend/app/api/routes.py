@@ -55,7 +55,12 @@ def _categorize_results(results: List[Dict[str, Any]], user_context: Dict[str, A
         # Load preferences via cognitive agent if available to use feedback/overrides
         try:
             preferences = cognitive_agent.get_user_preferences() if cognitive_agent else {}
-        except Exception:
+            # Merge user_context categories into preferences if provided
+            if user_context and user_context.get('categories'):
+                preferences = {**preferences, 'categories': user_context.get('categories')}
+            logger.info(f"Using preferences with {len(preferences.get('category_feedback', {}))} categories with feedback")
+        except Exception as e:
+            logger.warning(f"Could not load preferences: {e}")
             preferences = {}
 
         return classify_results_with_prototypes(results, prefs_categories, preferences)

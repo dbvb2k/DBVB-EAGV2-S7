@@ -86,15 +86,25 @@ class MemoryLayer:
             return False
     
     def update_preferences(self, preferences: Dict[str, Any]) -> bool:
-        """Update user preferences."""
+        """Update user preferences with deep merge for nested structures."""
         try:
-            self.preferences.update(preferences)
+            self._deep_update(self.preferences, preferences)
             self._save_preferences()
             logger.info("User preferences updated")
             return True
         except Exception as e:
             logger.error(f"Error updating preferences: {e}")
             return False
+    
+    def _deep_update(self, base: Dict[str, Any], updates: Dict[str, Any]):
+        """Recursively update nested dictionaries."""
+        for key, value in updates.items():
+            if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+                # Recursively merge nested dictionaries
+                self._deep_update(base[key], value)
+            else:
+                # Update or add the value
+                base[key] = value
     
     def get_preferences(self) -> Dict[str, Any]:
         """Get current user preferences."""

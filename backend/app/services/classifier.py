@@ -1,6 +1,9 @@
 import numpy as np
+import logging
 from typing import Dict, List, Any, Tuple
 from app.services.embedding import get_embedding, normalize_embedding
+
+logger = logging.getLogger(__name__)
 
 
 def _build_category_prototypes(categories: List[str], user_prefs: Dict[str, Any]) -> Dict[str, np.ndarray]:
@@ -20,6 +23,9 @@ def _build_category_prototypes(categories: List[str], user_prefs: Dict[str, Any]
 
     category_overrides: Dict[str, Dict[str, Any]] = (user_prefs or {}).get('category_overrides', {})
     feedback_examples: Dict[str, List[Dict[str, str]]] = (user_prefs or {}).get('category_feedback', {})
+    
+    total_feedback_examples = sum(len(examples) for examples in feedback_examples.values())
+    logger.info(f"Building prototypes for {len(categories)} categories with {total_feedback_examples} total feedback examples")
 
     for cat in categories:
         parts: List[str] = [cat]
@@ -71,33 +77,53 @@ def classify_results_with_prototypes(
     cat_names = list(prototypes.keys())
     proto_matrix = np.stack([prototypes[c] for c in cat_names]) if cat_names else None
 
+    # Build URL-to-category mapping from feedback for exact matches
+    feedback_examples: Dict[str, List[Dict[str, str]]] = (user_prefs or {}).get('category_feedback', {})
+    url_to_category: Dict[str, str] = {}
+    for cat, examples in feedback_examples.items():
+        for ex in examples:
+            ex_url = ex.get('url', '')
+            if ex_url:
+                url_to_category[ex_url] = cat
+    
     updated: List[Dict[str, Any]] = []
     for r in results:
         try:
-            emb = normalize_embedding(get_embedding(_result_text(r)))
-            # Cosine similarity for normalized vectors is dot product
-            sims = proto_matrix @ emb if proto_matrix is not None else np.array([])
-            # Pick top_k categories above threshold
-            if sims.size > 0:
-                top_idx = np.argsort(-sims)[:top_k]
-                labels: List[str] = []
-                confidences: List[float] = []
-                for idx in top_idx:
-                    if float(sims[idx]) >= threshold:
-                        labels.append(cat_names[idx])
-                        confidences.append(float(sims[idx]))
-                # Fallback
-                if not labels:
-                    labels = ['Others']
-                    confidences = [float(np.max(sims)) if sims.size else 0.0]
-                r['category'] = labels[0]
-                r['category_labels'] = labels
-                r['category_confidences'] = confidences
+            result_url = r.get('url', '')
+            # Check if we have explicit feedback for this exact URL
+            if result_url in url_to_category:
+                feedback_cat = url_to_category[result_url]
+                r['category'] = feedback_cat
+                r['category_labels'] = [feedback_cat]
+                r['category_confidences'] = [1.0]  # High confidence for explicit feedback
+                logger.debug(f"Using explicit feedback category '{feedback_cat}' for URL: {result_url}")
             else:
-                r['category'] = 'Others'
-                r['category_labels'] = ['Others']
-                r['category_confidences'] = [0.0]
-        except Exception:
+                # Use embedding-based classification
+                emb = normalize_embedding(get_embedding(_result_text(r)))
+                # Cosine similarity for normalized vectors is dot product
+                sims = proto_matrix @ emb if proto_matrix is not None else np.array([])
+                # Pick top_k categories above threshold
+                if sims.size > 0:
+                    top_idx = np.argsort(-sims)[:top_k]
+                    labels: List[str] = []
+                    confidences: List[float] = []
+                    for idx in top_idx:
+                        if float(sims[idx]) >= threshold:
+                            labels.append(cat_names[idx])
+                            confidences.append(float(sims[idx]))
+                    # Fallback
+                    if not labels:
+                        labels = ['Others']
+                        confidences = [float(np.max(sims)) if sims.size else 0.0]
+                    r['category'] = labels[0]
+                    r['category_labels'] = labels
+                    r['category_confidences'] = confidences
+                else:
+                    r['category'] = 'Others'
+                    r['category_labels'] = ['Others']
+                    r['category_confidences'] = [0.0]
+        except Exception as e:
+            logger.error(f"Error classifying result: {e}")
             r['category'] = 'Others'
             r['category_labels'] = ['Others']
             r['category_confidences'] = [0.0]
