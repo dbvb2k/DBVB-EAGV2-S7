@@ -58,8 +58,8 @@ function updateCategoryList() {
         item.style.display = 'flex';
         item.style.alignItems = 'center';
         item.style.justifyContent = 'space-between';
-        item.style.padding = '8px';
-        item.style.marginBottom = '6px';
+        item.style.padding = '6px 8px';
+        item.style.marginBottom = '2px';
         item.style.border = '1px solid #ddd';
         item.style.borderRadius = '4px';
         item.style.backgroundColor = '#ffffff';
