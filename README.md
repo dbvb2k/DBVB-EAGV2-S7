@@ -78,13 +78,15 @@ User Query → Cognitive Agent → Perception → Memory → Decision → Action
 ## Screenshots
 
 ### Search Tab
-![Search Tab Screenshot](images/search.png)
+<img src="images/search_1.png" alt="Search Tab Screenshot" width="30%">
+<img src="images/search_2.png" alt="Search Tab Screenshot 2" width="30%">
 
 ### Settings Tab
-![Settings Tab Screenshot](images/settings.png)
+<img src="images/settings_1.png" alt="Settings Tab Screenshot" width="30%">
+<img src="images/settings_2.png" alt="Settings Tab Screenshot 2" width="30%">
 
 ### Export/Download Tab
-![Export Tab Screenshot](images/export.png)
+<img src="images/export_1.png" alt="Export Tab Screenshot" width="30%">
 
 ## Installation
 
