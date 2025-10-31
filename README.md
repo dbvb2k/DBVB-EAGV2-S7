@@ -78,15 +78,15 @@ User Query → Cognitive Agent → Perception → Memory → Decision → Action
 ## Screenshots
 
 ### Search Tab
-<img src="images/search_1.png" alt="Search Tab Screenshot" width="30%">
-<img src="images/search_2.png" alt="Search Tab Screenshot 2" width="30%">
+<img src="images/search_1.png" alt="Search Tab Screenshot" width="50%">
+<img src="images/search_2.png" alt="Search Tab Screenshot 2" width="50%">
 
 ### Settings Tab
-<img src="images/settings_1.png" alt="Settings Tab Screenshot" width="30%">
-<img src="images/settings_2.png" alt="Settings Tab Screenshot 2" width="30%">
+<img src="images/settings_1.png" alt="Settings Tab Screenshot" width="50%">
+<img src="images/settings_2.png" alt="Settings Tab Screenshot 2" width="50%">
 
 ### Export/Download Tab
-<img src="images/export_1.png" alt="Export Tab Screenshot" width="30%">
+<img src="images/export_1.png" alt="Export Tab Screenshot" width="50%">
 
 ## Installation
 
@@ -135,16 +135,15 @@ User Query → Cognitive Agent → Perception → Memory → Decision → Action
 4. **Start the backend server:**
 
    **Development Mode:**
+   Use uv and Flask CLI
+
    ```bash
-   python wsgi.py
+   uv run flask run 
+   or
+   uv run flask run --debug
    ```
    
-   Or using Flask CLI:
-   ```bash
-   flask run
-   ```
-
-   The server will start on `http://localhost:5000`
+      The server will start on `http://localhost:5000`
 
    **Production Mode:**
    ```bash
