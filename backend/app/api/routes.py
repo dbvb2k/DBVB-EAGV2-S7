@@ -45,23 +45,26 @@ def _categorize_results(results: List[Dict[str, Any]], user_context: Dict[str, A
     """Categorize search results (embedding-prototype if possible, else keyword fallback)."""
     try:
         from app.services.classifier import classify_results_with_prototypes
-        # Use user selected categories if provided, else default known set
-        prefs_categories = []
-        if user_context and isinstance(user_context.get('categories', None), list):
-            prefs_categories = user_context.get('categories')
-        if not prefs_categories:
-            prefs_categories = ['Sports', 'Politics', 'Financial', 'Health & Medical', 'Current Affairs', 'Technology', 'Others']
-
-        # Load preferences via cognitive agent if available to use feedback/overrides
+        
+        # Load preferences via cognitive agent if available
+        preferences = {}
         try:
             preferences = cognitive_agent.get_user_preferences() if cognitive_agent else {}
-            # Merge user_context categories into preferences if provided
-            if user_context and user_context.get('categories'):
-                preferences = {**preferences, 'categories': user_context.get('categories')}
-            logger.info(f"Using preferences with {len(preferences.get('category_feedback', {}))} categories with feedback")
-        except Exception as e:
-            logger.warning(f"Could not load preferences: {e}")
-            preferences = {}
+        except Exception:
+            pass
+        
+        # Get available categories from preferences, with fallback
+        available_categories = preferences.get('available_categories', [])
+        if not available_categories:
+            available_categories = ['Sports', 'Politics', 'Financial', 'Health & Medical', 'Current Affairs', 'Technology', 'Others']
+        
+        # Use available categories for classification
+        prefs_categories = available_categories
+        
+        # Merge user_context into preferences if provided
+        if user_context and user_context.get('categories'):
+            preferences = {**preferences, 'categories': user_context.get('categories')}
+        logger.info(f"Classifying with {len(prefs_categories)} available categories, {len(preferences.get('category_feedback', {}))} categories with feedback")
 
         return classify_results_with_prototypes(results, prefs_categories, preferences)
     except Exception as e:
@@ -577,3 +580,104 @@ def classification_feedback():
     except Exception as e:
         logger.error(f'Error recording classification feedback: {str(e)}')
         return jsonify({'error': str(e)}), 500
+
+@bp.route('/categories', methods=['GET'])
+def get_categories():
+    """Get all available categories."""
+    try:
+        init_services()
+        
+        if cognitive_agent and hasattr(cognitive_agent, 'memory') and cognitive_agent.memory:
+            categories = cognitive_agent.memory.get_available_categories()
+            preferences = cognitive_agent.get_user_preferences()
+            descriptions = preferences.get('category_descriptions', {})
+        else:
+            # Fallback to defaults
+            categories = ['Sports', 'Politics', 'Financial', 'Health & Medical', 'Current Affairs', 'Technology', 'Others']
+            descriptions = {}
+        
+        return jsonify({
+            'success': True,
+            'categories': categories,
+            'descriptions': descriptions
+        })
+    except Exception as e:
+        logger.error(f'Error getting categories: {str(e)}', exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@bp.route('/categories', methods=['POST'])
+def add_category():
+    """Add a new category."""
+    try:
+        init_services()
+        
+        if not request.is_json:
+            return jsonify({'success': False, 'error': 'Content-Type must be application/json'}), 400
+        
+        data = request.get_json()
+        if not data or 'category' not in data:
+            return jsonify({'success': False, 'error': 'Missing category name'}), 400
+        
+        category = data['category']
+        description = data.get('description', '')
+        
+        if not cognitive_agent:
+            return jsonify({'success': False, 'error': 'Cognitive agent not available'}), 500
+        
+        if not hasattr(cognitive_agent, 'memory') or not cognitive_agent.memory:
+            return jsonify({'success': False, 'error': 'Memory layer not available'}), 500
+        
+        success = cognitive_agent.memory.add_category(category, description)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Category "{category}" added successfully',
+                'categories': cognitive_agent.memory.get_available_categories()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'Category "{category}" already exists'
+            }), 400
+    except Exception as e:
+        logger.error(f'Error adding category: {str(e)}', exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@bp.route('/categories', methods=['DELETE'])
+def remove_category():
+    """Remove a category."""
+    try:
+        init_services()
+        
+        if not request.is_json:
+            return jsonify({'success': False, 'error': 'Content-Type must be application/json'}), 400
+        
+        data = request.get_json()
+        if not data or 'category' not in data:
+            return jsonify({'success': False, 'error': 'Missing category name'}), 400
+        
+        category = data['category']
+        
+        if not cognitive_agent:
+            return jsonify({'success': False, 'error': 'Cognitive agent not available'}), 500
+        
+        if not hasattr(cognitive_agent, 'memory') or not cognitive_agent.memory:
+            return jsonify({'success': False, 'error': 'Memory layer not available'}), 500
+        
+        success = cognitive_agent.memory.remove_category(category)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Category "{category}" removed successfully',
+                'categories': cognitive_agent.memory.get_available_categories()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'Cannot remove category "{category}"'
+            }), 400
+    except Exception as e:
+        logger.error(f'Error removing category: {str(e)}', exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500

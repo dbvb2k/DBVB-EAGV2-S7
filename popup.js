@@ -15,6 +15,203 @@ const backendStatus = document.getElementById('backend-status');
 const notificationArea = document.getElementById('notification-area');
 let availableCategories = ['Sports', 'Politics', 'Financial', 'Health & Medical', 'Current Affairs', 'Technology', 'Others'];
 
+// Function to load available categories from backend
+async function loadAvailableCategories() {
+    try {
+        const response = await fetch('http://localhost:5000/api/categories');
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success && Array.isArray(result.categories)) {
+                availableCategories = result.categories;
+                // Ensure 'Others' is always present
+                if (!availableCategories.includes('Others')) {
+                    availableCategories.push('Others');
+                }
+                // Update category list display
+                updateCategoryList();
+                return availableCategories;
+            }
+        }
+    } catch (error) {
+        console.error('Error loading categories:', error);
+    }
+    return availableCategories;
+}
+
+// Function to update the category list display
+function updateCategoryList() {
+    const categoryList = document.getElementById('category-list');
+    if (!categoryList) {
+        console.warn('Category list element not found');
+        return;
+    }
+    
+    if (!availableCategories || availableCategories.length === 0) {
+        categoryList.innerHTML = '<p style="color: #666; font-size: 12px; padding: 8px;">Loading categories...</p>';
+        return;
+    }
+    
+    categoryList.innerHTML = '';
+    
+    availableCategories.forEach(category => {
+        const item = document.createElement('div');
+        item.style.display = 'flex';
+        item.style.alignItems = 'center';
+        item.style.justifyContent = 'space-between';
+        item.style.padding = '8px';
+        item.style.marginBottom = '6px';
+        item.style.border = '1px solid #ddd';
+        item.style.borderRadius = '4px';
+        item.style.backgroundColor = '#ffffff';
+        item.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
+        
+        const name = document.createElement('span');
+        name.textContent = category;
+        name.style.flex = '1';
+        name.style.fontSize = '13px';
+        name.style.fontWeight = '500';
+        
+        const removeBtn = document.createElement('button');
+        removeBtn.textContent = 'Remove';
+        removeBtn.style.padding = '4px 12px';
+        removeBtn.style.fontSize = '12px';
+        removeBtn.style.background = '#d32f2f';
+        removeBtn.style.color = 'white';
+        removeBtn.style.border = 'none';
+        removeBtn.style.borderRadius = '4px';
+        removeBtn.style.cursor = 'pointer';
+        removeBtn.style.marginLeft = '8px';
+        removeBtn.style.fontWeight = 'bold';
+        
+        // Don't allow removing 'Others' category
+        if (category.toLowerCase() === 'others') {
+            removeBtn.disabled = true;
+            removeBtn.style.opacity = '0.5';
+            removeBtn.style.cursor = 'not-allowed';
+            removeBtn.style.background = '#999';
+        } else {
+            removeBtn.onmouseover = function() {
+                this.style.background = '#b71c1c';
+            };
+            removeBtn.onmouseout = function() {
+                this.style.background = '#d32f2f';
+            };
+        }
+        
+        removeBtn.onclick = async (e) => {
+            e.stopPropagation();
+            if (confirm(`Remove category "${category}"? This will also remove it from your selected preferences.`)) {
+                await removeCategory(category);
+            }
+        };
+        
+        item.appendChild(name);
+        item.appendChild(removeBtn);
+        categoryList.appendChild(item);
+    });
+    
+    console.log(`Updated category list with ${availableCategories.length} categories`);
+}
+
+// Function to add a new category
+async function addCategory() {
+    const input = document.getElementById('new-category-input');
+    const categoryName = input.value.trim();
+    
+    if (!categoryName) {
+        addNotification('Please enter a category name', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch('http://localhost:5000/api/categories', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                category: categoryName
+            })
+        });
+        
+        // Check if response is JSON
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            const text = await response.text();
+            console.error('Non-JSON response received:', text.substring(0, 200));
+            addNotification('Server returned an error. Please check if the backend server is running.', 'error');
+            return;
+        }
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            addNotification(`Category "${categoryName}" added successfully`, 'success');
+            input.value = '';
+            // Reload categories and update UI
+            await loadAvailableCategories();
+            await initializeCategoryCheckboxes();
+            await loadUserPreferences();
+        } else {
+            addNotification(result.error || 'Failed to add category', 'error');
+        }
+    } catch (error) {
+        console.error('Error adding category:', error);
+        if (error.message && error.message.includes('JSON')) {
+            addNotification('Server returned invalid response. Please check if the backend server is running on http://localhost:5000', 'error');
+        } else if (error.message && error.message.includes('fetch')) {
+            addNotification('Cannot connect to backend server. Please ensure it is running on http://localhost:5000', 'error');
+        } else {
+            addNotification(`Error adding category: ${error.message}`, 'error');
+        }
+    }
+}
+
+// Function to remove a category
+async function removeCategory(categoryName) {
+    try {
+        const response = await fetch('http://localhost:5000/api/categories', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                category: categoryName
+            })
+        });
+        
+        // Check if response is JSON
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            const text = await response.text();
+            console.error('Non-JSON response received:', text.substring(0, 200));
+            addNotification('Server returned an error. Please check if the backend server is running.', 'error');
+            return;
+        }
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            addNotification(`Category "${categoryName}" removed successfully`, 'success');
+            // Reload categories and update UI
+            await loadAvailableCategories();
+            await initializeCategoryCheckboxes();
+            await loadUserPreferences();
+        } else {
+            addNotification(result.error || 'Failed to remove category', 'error');
+        }
+    } catch (error) {
+        console.error('Error removing category:', error);
+        if (error.message && error.message.includes('JSON')) {
+            addNotification('Server returned invalid response. Please check if the backend server is running on http://localhost:5000', 'error');
+        } else if (error.message && error.message.includes('fetch')) {
+            addNotification('Cannot connect to backend server. Please ensure it is running on http://localhost:5000', 'error');
+        } else {
+            addNotification(`Error removing category: ${error.message}`, 'error');
+        }
+    }
+}
+
 console.log('Popup script loaded');
 
 // Constants
@@ -68,10 +265,13 @@ tabs.forEach(tab => {
       console.log('Loading settings tab');
       loadConfidentialSites();
       // Also load user preferences when opening settings
-      // Initialize categories only once to avoid duplicates
+      // Always reload categories in case they were updated
       const catContainer = document.getElementById('category-checkboxes');
-      if (catContainer && catContainer.childElementCount === 0) {
-        initializeCategoryCheckboxes();
+      if (catContainer) {
+        initializeCategoryCheckboxes().then(() => {
+          // Ensure category list is updated after loading
+          updateCategoryList();
+        });
       }
       loadUserPreferences();
     } else if (tabId === 'export') {
@@ -103,8 +303,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // Save preferences functionality
     document.getElementById('save-preferences').addEventListener('click', saveUserPreferences);
     
-    // Initialize category checkboxes
-    initializeCategoryCheckboxes();
+    // Category management functionality
+    document.getElementById('add-category-btn').addEventListener('click', addCategory);
+    document.getElementById('new-category-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            addCategory();
+        }
+    });
+    
+    // Initialize category checkboxes (async, but don't wait)
+    initializeCategoryCheckboxes().then(() => {
+        // Update category list display after loading
+        updateCategoryList();
+    });
     
     // Load preferences
     loadUserPreferences();
@@ -1030,9 +1241,14 @@ async function clearAllData() {
 }
 
 // Function to initialize category checkboxes
-function initializeCategoryCheckboxes() {
-    const categories = ['Sports', 'Politics', 'Financial', 'Health & Medical', 'Current Affairs', 'Technology', 'Others'];
+async function initializeCategoryCheckboxes() {
     const container = document.getElementById('category-checkboxes');
+    
+    // Load available categories from backend
+    const categories = await loadAvailableCategories();
+    
+    // Clear existing checkboxes
+    container.innerHTML = '';
     
     categories.forEach(category => {
         const label = document.createElement('label');
@@ -1078,9 +1294,8 @@ async function loadUserPreferences() {
             document.getElementById('categorize-results').checked = prefs.categorize_results === true;
             document.getElementById('skip-confidential').checked = prefs.skip_confidential_sites !== false;
             
-            // Set category checkboxes
+            // Set category checkboxes (availableCategories should already be loaded)
             if (prefs.categories && Array.isArray(prefs.categories)) {
-                availableCategories = [...prefs.categories, 'Others'];
                 prefs.categories.forEach(category => {
                     const checkbox = document.getElementById(`category-${category.toLowerCase().replace(/\s+/g, '-')}`);
                     if (checkbox) {

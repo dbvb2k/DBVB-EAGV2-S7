@@ -241,7 +241,11 @@ class MemoryLayer:
                     'taste_preferences': 'neutral',
                     'skip_confidential_sites': True,
                     'highlight_search_terms': True,
-                    'categories': [],
+                    'categories': [],  # Selected categories
+                    'available_categories': [  # All available categories
+                        'Sports', 'Politics', 'Financial', 'Health & Medical', 
+                        'Current Affairs', 'Technology', 'Others'
+                    ],
                     'favorites': []
                 }
                 self._save_preferences()
@@ -267,6 +271,88 @@ class MemoryLayer:
             'taste_preferences': 'neutral',
             'skip_confidential_sites': True,
             'highlight_search_terms': True,
-            'categories': [],
+            'categories': [],  # Selected categories
+            'available_categories': [  # All available categories
+                'Sports', 'Politics', 'Financial', 'Health & Medical', 
+                'Current Affairs', 'Technology', 'Others'
+            ],
             'favorites': []
         }
+    
+    def get_available_categories(self) -> List[str]:
+        """Get list of all available categories."""
+        if 'available_categories' not in self.preferences or not self.preferences['available_categories']:
+            # Initialize with defaults if not set
+            default_cats = ['Sports', 'Politics', 'Financial', 'Health & Medical', 'Current Affairs', 'Technology', 'Others']
+            self.preferences['available_categories'] = default_cats
+            self._save_preferences()
+        return self.preferences.get('available_categories', [])
+    
+    def add_category(self, category: str, description: str = None) -> bool:
+        """Add a new category to available categories."""
+        try:
+            if 'available_categories' not in self.preferences:
+                self.preferences['available_categories'] = []
+            
+            # Normalize category name (trim whitespace)
+            category = category.strip()
+            
+            # Check if category already exists (case-insensitive)
+            existing = [c.lower() for c in self.preferences['available_categories']]
+            if category.lower() in existing:
+                logger.warning(f"Category '{category}' already exists")
+                return False
+            
+            self.preferences['available_categories'].append(category)
+            
+            # Optionally store description
+            if description:
+                if 'category_descriptions' not in self.preferences:
+                    self.preferences['category_descriptions'] = {}
+                self.preferences['category_descriptions'][category] = description.strip()
+            
+            self._save_preferences()
+            logger.info(f"Added category '{category}'")
+            return True
+        except Exception as e:
+            logger.error(f"Error adding category: {e}")
+            return False
+    
+    def remove_category(self, category: str) -> bool:
+        """Remove a category from available categories."""
+        try:
+            if 'available_categories' not in self.preferences:
+                return False
+            
+            # Normalize for comparison
+            category = category.strip()
+            original_list = self.preferences['available_categories']
+            
+            # Remove category (case-insensitive)
+            self.preferences['available_categories'] = [
+                c for c in original_list if c.lower() != category.lower()
+            ]
+            
+            # Don't allow removing if it's the last category or if it's 'Others'
+            if len(self.preferences['available_categories']) == 0:
+                logger.warning("Cannot remove last category")
+                self.preferences['available_categories'] = original_list
+                return False
+            
+            # Remove from selected categories if present
+            if 'categories' in self.preferences:
+                self.preferences['categories'] = [
+                    c for c in self.preferences['categories'] 
+                    if c.lower() != category.lower()
+                ]
+            
+            # Remove description if present
+            if 'category_descriptions' in self.preferences and category in self.preferences['category_descriptions']:
+                del self.preferences['category_descriptions'][category]
+            
+            self._save_preferences()
+            logger.info(f"Removed category '{category}'")
+            return True
+        except Exception as e:
+            logger.error(f"Error removing category: {e}")
+            return False
